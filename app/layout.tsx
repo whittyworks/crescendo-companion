@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Cinzel,
   Cinzel_Decorative,
@@ -36,6 +36,15 @@ export const metadata: Metadata = {
   title: "Crescendo Companion",
   description:
     "A Catholic formation companion grounded in the My Holy Crescendo framework.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Resize the layout viewport when the on-screen keyboard opens, so
+  // h-[100dvh] containers shrink to fit above it on iOS and Android. Without
+  // this, the chat input would sit behind the keyboard on mobile.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

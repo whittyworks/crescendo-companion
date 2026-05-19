@@ -43,8 +43,8 @@ export default async function ChatPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-cream text-navy">
-      <header className="flex items-center justify-between border-b border-navy/10 px-6 py-5 sm:px-10">
+    <div className="flex h-[100dvh] flex-col overflow-hidden bg-cream text-navy">
+      <header className="flex shrink-0 items-center justify-between border-b border-navy/10 px-6 py-5 sm:px-10">
         <h1 className="font-display text-lg tracking-[0.18em] text-navy sm:text-xl">
           Crescendo Companion
         </h1>

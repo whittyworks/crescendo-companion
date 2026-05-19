@@ -40,7 +40,9 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+    // ~6 lines at text-base + leading-relaxed + py-3, then the textarea
+    // scrolls internally instead of pushing the footer taller.
+    el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [input])
 
   async function send() {
@@ -116,7 +118,7 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
     <>
       <main
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-6 py-10 sm:px-10"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-10 sm:px-10"
       >
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-8">
           {showEmptyState ? (
@@ -141,7 +143,7 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
         </div>
       </main>
 
-      <footer className="border-t border-navy/10 bg-cream/95 px-6 py-5 sm:px-10">
+      <footer className="shrink-0 border-t border-navy/10 bg-cream px-6 py-5 shadow-[0_-8px_24px_-12px_rgba(22,50,69,0.08)] sm:px-10">
         <div className="mx-auto w-full max-w-2xl">
           {error && (
             <p
@@ -161,7 +163,7 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
               placeholder="Write to your companion…"
               rows={1}
               disabled={isSending}
-              className="min-h-[3rem] flex-1 resize-none border border-navy/20 bg-white/40 px-4 py-3 font-sans text-base leading-relaxed text-navy outline-none transition-colors placeholder:text-navy/40 focus:border-gold disabled:opacity-60"
+              className="min-h-[3rem] flex-1 resize-none overflow-y-auto border border-navy/20 bg-white/40 px-4 py-3 font-sans text-base leading-relaxed text-navy outline-none transition-colors placeholder:text-navy/40 focus:border-gold disabled:opacity-60"
             />
             <button
               type="button"
