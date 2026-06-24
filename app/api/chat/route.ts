@@ -1,10 +1,11 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { getAnthropic } from '@/lib/anthropic'
 import { SYSTEM_PROMPT } from '@/lib/system-prompt'
 
 const MODEL = 'claude-opus-4-7'
-const MAX_TOKENS = 16000
+const MAX_TOKENS = 4000
 const HISTORY_LIMIT = 20
 
 export const maxDuration = 60
@@ -112,12 +113,16 @@ export async function POST(req: Request) {
     }),
   )
 
-  // Create a streaming response
+  // Service-role client for background saves (not tied to request cookies)
+  const serviceClient = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
   const encoder = new TextEncoder()
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
-  // Run the Anthropic stream in the background
   ;(async () => {
     let assistantText = ''
     try {
@@ -136,7 +141,6 @@ export async function POST(req: Request) {
         messages: anthropicMessages,
       })
 
-      // First chunk: send conversationId so the client can track it
       await writer.write(
         encoder.encode(
           `data: ${JSON.stringify({ type: 'init', conversationId })}\n\n`
@@ -158,9 +162,9 @@ export async function POST(req: Request) {
         }
       }
 
-      // Save the completed response to Supabase
+      // Use service client to save — avoids cookie/session expiry issues
       const { data: savedAssistant, error: assistantInsertError } =
-        await supabase
+        await serviceClient
           .from('messages')
           .insert({
             conversation_id: conversationId,
@@ -171,17 +175,14 @@ export async function POST(req: Request) {
           .single()
 
       if (assistantInsertError || !savedAssistant) {
-        console.error(
-          '[api/chat] failed to save assistant message:',
-          assistantInsertError
-        )
+        console.error('[api/chat] failed to save assistant message:', assistantInsertError)
         await writer.write(
           encoder.encode(
             `data: ${JSON.stringify({ type: 'error', error: 'Could not save the companion response.' })}\n\n`
           )
         )
       } else {
-        await supabase
+        await serviceClient
           .from('conversations')
           .update({ updated_at: new Date().toISOString() })
           .eq('id', conversationId)
