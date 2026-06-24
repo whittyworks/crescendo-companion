@@ -26,6 +26,7 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
   )
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [streamingContent, setStreamingContent] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -34,14 +35,12 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, isSending])
+  }, [messages, isSending, streamingContent])
 
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    // ~6 lines at text-base + leading-relaxed + py-3, then the textarea
-    // scrolls internally instead of pushing the footer taller.
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [input])
 
@@ -58,15 +57,13 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
     setInput('')
     setError(null)
     setIsSending(true)
+    setStreamingContent('')
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          conversationId,
-        }),
+        body: JSON.stringify({ message: text, conversationId }),
       })
 
       if (!res.ok) {
@@ -75,31 +72,68 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
           const errBody = (await res.json()) as { error?: string }
           if (errBody?.error) detail = errBody.error
         } catch {
-          // non-JSON response — keep the generic message
+          // non-JSON response
         }
         throw new Error(detail)
       }
 
-      const payload = (await res.json()) as {
-        conversationId: string
-        assistant: { id: string; content: string }
+      // Read the SSE stream
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response stream available.')
+
+      const decoder = new TextDecoder()
+      let accumulated = ''
+      let finalMessageId = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6).trim()
+          if (!raw) continue
+
+          let event: Record<string, unknown>
+          try {
+            event = JSON.parse(raw)
+          } catch {
+            continue
+          }
+
+          if (event.type === 'init') {
+            setConversationId(event.conversationId as string)
+          } else if (event.type === 'delta') {
+            accumulated += event.text as string
+            setStreamingContent(accumulated)
+          } else if (event.type === 'done') {
+            finalMessageId = event.messageId as string
+          } else if (event.type === 'error') {
+            throw new Error(event.error as string)
+          }
+        }
       }
 
-      setConversationId(payload.conversationId)
+      // Commit the streamed message into the messages list
       setMessages((prev) => [
         ...prev,
         {
-          id: payload.assistant.id,
+          id: finalMessageId || `assistant-${Date.now()}`,
           role: 'assistant',
-          content: payload.assistant.content,
+          content: accumulated,
         },
       ])
+      setStreamingContent('')
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
           : 'Something went wrong sending your message. Please try again.',
       )
+      setStreamingContent('')
     } finally {
       setIsSending(false)
     }
@@ -112,7 +146,7 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
     }
   }
 
-  const showEmptyState = messages.length === 0
+  const showEmptyState = messages.length === 0 && !isSending
 
   return (
     <>
@@ -135,7 +169,19 @@ export function ChatShell({ initialConversationId, initialMessages }: Props) {
             messages.map((m) => <Bubble key={m.id} message={m} />)
           )}
 
-          {isSending && (
+          {/* Streaming bubble — appears while response is arriving */}
+          {isSending && streamingContent && (
+            <Bubble
+              message={{
+                id: 'streaming',
+                role: 'assistant',
+                content: streamingContent,
+              }}
+            />
+          )}
+
+          {/* Thinking indicator — before first token arrives */}
+          {isSending && !streamingContent && (
             <p className="font-serif text-base italic text-navy/55">
               Companion is thinking…
             </p>
@@ -198,7 +244,7 @@ function Bubble({ message }: { message: ChatMessage }) {
       >
         {message.content.split('\n').map((line, i) => (
           <p key={i} className={i > 0 ? 'mt-3' : ''}>
-            {line || ' '}
+            {line || ' '}
           </p>
         ))}
       </div>
