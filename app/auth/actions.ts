@@ -50,6 +50,22 @@ export async function signOut() {
   redirect('/')
 }
 
+export async function requestPasswordReset(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get('email') ?? '').trim()
+  if (!email) return { error: 'Please enter your email.' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/auth/reset-password`,
+  })
+
+  if (error) return { error: friendlyAuthError(error.message) }
+  return { message: 'Check your email for a reset link.' }
+}
+
 export async function submitAuth(
   _prev: AuthState,
   formData: FormData,

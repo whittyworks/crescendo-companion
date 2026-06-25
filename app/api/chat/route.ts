@@ -5,7 +5,7 @@ import { getAnthropic } from '@/lib/anthropic'
 import { SYSTEM_PROMPT } from '@/lib/system-prompt'
 
 const MODEL = 'claude-opus-4-7'
-const MAX_TOKENS = 4000
+const MAX_TOKENS = 8000
 const HISTORY_LIMIT = 20
 
 export const maxDuration = 60

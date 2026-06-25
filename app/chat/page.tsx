@@ -1,16 +1,15 @@
+// app/chat/page.tsx
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { signOut } from '../auth/actions'
-import { ChatShell, type ChatMessage } from './chat-shell'
+import { ChatShell, type ChatMessage, type Conversation } from './chat-shell'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ChatPage() {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth?mode=signin')
 
   const { data: access } = await supabase
@@ -20,20 +19,22 @@ export default async function ChatPage() {
     .maybeSingle()
   if (!access?.has_companion_access) redirect('/no-access')
 
-  const { data: conversation } = await supabase
+  // Load all conversations for sidebar
+  const { data: conversations } = await supabase
     .from('conversations')
-    .select('id')
+    .select('id, title, updated_at')
     .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+    .limit(50)
 
+  // Load messages for most recent conversation
+  const mostRecent = conversations?.[0] ?? null
   let initialMessages: ChatMessage[] = []
-  if (conversation?.id) {
+  if (mostRecent?.id) {
     const { data: messages } = await supabase
       .from('messages')
       .select('id, role, content, created_at')
-      .eq('conversation_id', conversation.id)
+      .eq('conversation_id', mostRecent.id)
       .order('created_at', { ascending: true })
     initialMessages = (messages ?? []).map((m) => ({
       id: m.id,
@@ -59,8 +60,9 @@ export default async function ChatPage() {
       </header>
 
       <ChatShell
-        initialConversationId={conversation?.id ?? null}
+        initialConversationId={mostRecent?.id ?? null}
         initialMessages={initialMessages}
+        initialConversations={(conversations ?? []) as Conversation[]}
       />
     </div>
   )
