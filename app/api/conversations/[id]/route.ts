@@ -56,3 +56,36 @@ export async function DELETE(
 
   return NextResponse.json({ success: true })
 }
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 })
+
+  const { data: conv } = await supabase
+    .from('conversations')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!conv) return NextResponse.json({ error: 'Not found.' }, { status: 404 })
+
+  let body: { title?: string }
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid body.' }, { status: 400 }) }
+
+  const serviceClient = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  await serviceClient
+    .from('conversations')
+    .update({ title: body.title ?? null })
+    .eq('id', id)
+
+  return NextResponse.json({ success: true })
+}

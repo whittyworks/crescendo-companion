@@ -36,9 +36,12 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
   const [error, setError] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState<string | null>(null)
+  const [editingTitleValue, setEditingTitleValue] = useState('')
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -51,6 +54,37 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, 180)}px`
   }, [input])
+
+  useEffect(() => {
+    if (editingTitle && titleInputRef.current) {
+      titleInputRef.current.focus()
+      titleInputRef.current.select()
+    }
+  }, [editingTitle])
+
+  function startEditingTitle(c: Conversation) {
+    setEditingTitle(c.id)
+    setEditingTitleValue(c.title || '')
+  }
+
+  async function saveTitle(id: string) {
+    const trimmed = editingTitleValue.trim()
+    setEditingTitle(null)
+    if (!trimmed) return
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c))
+    )
+    await fetch(`/api/conversations/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: trimmed }),
+    })
+  }
+
+  function onTitleKeyDown(e: React.KeyboardEvent<HTMLInputElement>, id: string) {
+    if (e.key === 'Enter') saveTitle(id)
+    if (e.key === 'Escape') setEditingTitle(null)
+  }
 
   async function loadConversation(id: string) {
     if (id === conversationId) { setSidebarOpen(false); return }
@@ -145,7 +179,6 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
             setStreamingContent(accumulated)
           } else if (event.type === 'done') {
             finalMessageId = event.messageId as string
-            // Refresh conversation list to pick up new title/updated_at
             fetch('/api/conversations')
               .then((r) => r.json())
               .then((data: { conversations: Conversation[] }) => {
@@ -188,7 +221,6 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Sidebar overlay on mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-navy/30 sm:hidden"
@@ -196,7 +228,6 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`
           fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-navy/10 bg-cream shadow-lg
@@ -227,51 +258,69 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
             conversations.map((c) => (
               <div
                 key={c.id}
-                className={`group relative flex items-start gap-2 px-5 py-3 transition-colors cursor-pointer
+                className={`group relative flex items-start gap-2 px-5 py-3 transition-colors
                   ${c.id === conversationId ? 'bg-navy/5' : 'hover:bg-navy/5'}`}
               >
-                <button
-                  type="button"
-                  onClick={() => loadConversation(c.id)}
-                  className="flex-1 text-left"
-                >
-                  <p className={`font-sans text-sm leading-snug truncate
-                    ${c.id === conversationId ? 'text-navy font-medium' : 'text-navy/70'}`}>
-                    {c.title || 'Untitled conversation'}
-                  </p>
-                  <p className="mt-0.5 font-sans text-xs text-navy/40">
-                    {new Date(c.updated_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric'
-                    })}
-                  </p>
-                </button>
+                <div className="flex-1 min-w-0">
+                  {editingTitle === c.id ? (
+                    <input
+                      ref={titleInputRef}
+                      type="text"
+                      value={editingTitleValue}
+                      onChange={(e) => setEditingTitleValue(e.target.value)}
+                      onKeyDown={(e) => onTitleKeyDown(e, c.id)}
+                      onBlur={() => saveTitle(c.id)}
+                      className="w-full border-b border-gold bg-transparent font-sans text-sm text-navy outline-none"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => loadConversation(c.id)}
+                      onDoubleClick={() => startEditingTitle(c)}
+                      className="w-full text-left"
+                      title="Click to open · Double-click to rename"
+                    >
+                      <p className={`font-sans text-sm leading-snug truncate
+                        ${c.id === conversationId ? 'text-navy font-medium' : 'text-navy/70'}`}>
+                        {c.title || 'Untitled conversation'}
+                      </p>
+                      <p className="mt-0.5 font-sans text-xs text-navy/40">
+                        {new Date(c.updated_at).toLocaleDateString('en-US', {
+                          month: 'short', day: 'numeric'
+                        })}
+                      </p>
+                    </button>
+                  )}
+                </div>
 
-                {deleteConfirm === c.id ? (
-                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                {editingTitle !== c.id && (
+                  deleteConfirm === c.id ? (
+                    <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => deleteConversation(c.id)}
+                        className="font-sans text-xs text-red-700 hover:text-red-900"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(null)}
+                        className="font-sans text-xs text-navy/40 hover:text-navy"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
                     <button
                       type="button"
-                      onClick={() => deleteConversation(c.id)}
-                      className="font-sans text-xs text-red-700 hover:text-red-900"
+                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id) }}
+                      className="shrink-0 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity font-sans text-xs text-navy/30 hover:text-red-700"
+                      aria-label="Delete conversation"
                     >
-                      Delete
+                      ✕
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteConfirm(null)}
-                      className="font-sans text-xs text-navy/40 hover:text-navy"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(c.id) }}
-                    className="shrink-0 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity font-sans text-xs text-navy/30 hover:text-red-700"
-                    aria-label="Delete conversation"
-                  >
-                    ✕
-                  </button>
+                  )
                 )}
               </div>
             ))
@@ -279,9 +328,7 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
         </div>
       </aside>
 
-      {/* Main chat area */}
       <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Mobile sidebar toggle */}
         <div className="flex shrink-0 items-center border-b border-navy/10 px-4 py-3 sm:hidden">
           <button
             type="button"
