@@ -201,9 +201,33 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
       ])
       setStreamingContent('')
     } catch (e) {
-      setError(
-        e instanceof Error ? e.message : 'Something went wrong. Please try again.',
-      )
+      // If the stream was interrupted (e.g. screen sleep), try to reload from Supabase
+      const convId = conversationId
+      if (convId && accumulated) {
+        // We got some content before the interruption — commit what we have
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: accumulated,
+          },
+        ])
+      } else if (convId) {
+        // Try to reload the conversation to show whatever Supabase saved
+        fetch(`/api/conversations/${convId}`)
+          .then((r) => r.json())
+          .then((data: { messages: ChatMessage[] }) => {
+            setMessages(data.messages)
+          })
+          .catch(() => {
+            setError('Something went wrong. Please try again.')
+          })
+      } else {
+        setError(
+          e instanceof Error ? e.message : 'Something went wrong. Please try again.',
+        )
+      }
       setStreamingContent('')
     } finally {
       setIsSending(false)

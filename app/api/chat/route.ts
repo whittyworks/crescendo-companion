@@ -6,7 +6,7 @@ import { SYSTEM_PROMPT } from '@/lib/system-prompt'
 
 const MODEL = 'claude-opus-4-7'
 const MAX_TOKENS = 8000
-const HISTORY_LIMIT = 20
+const HISTORY_LIMIT = 100
 
 export const maxDuration = 60
 
@@ -182,9 +182,19 @@ export async function POST(req: Request) {
           )
         )
       } else {
+        // Auto-generate title from first user message if none exists
+        const { data: conv } = await serviceClient
+          .from('conversations')
+          .select('title')
+          .eq('id', conversationId)
+          .single()
+        const updates: Record<string, string> = { updated_at: new Date().toISOString() }
+        if (!conv?.title) {
+          updates.title = message.slice(0, 60) + (message.length > 60 ? '…' : '')
+        }
         await serviceClient
           .from('conversations')
-          .update({ updated_at: new Date().toISOString() })
+          .update(updates)
           .eq('id', conversationId)
 
         await writer.write(
