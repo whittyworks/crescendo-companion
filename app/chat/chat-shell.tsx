@@ -132,6 +132,8 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
     setIsSending(true)
     setStreamingContent('')
 
+    let accumulated = ''
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -152,7 +154,6 @@ export function ChatShell({ initialConversationId, initialMessages, initialConve
       if (!reader) throw new Error('No response stream available.')
 
       const decoder = new TextDecoder()
-      let accumulated = ''
       let finalMessageId = ''
       let newConversationId = conversationId
 
